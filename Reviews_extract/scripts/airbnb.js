@@ -1,7 +1,7 @@
 (function() {
     console.log("Airbnb Review Scraper Started...");
 
-    // 1. Helper: Format Date (DD/Mon/YYYY, e.g. 30/Dec/2025)
+    // 1. Helper: Format Date (DD/Mon/YYYY, e.g. 01/Jan/2026)
     function formatDate(dateString) {
         const date = new Date(dateString);
         if (isNaN(date.getTime())) return dateString; 
@@ -13,7 +13,7 @@
         return `${d}/${m}/${y}`;
     }
 
-    // 2. Helper: Format Time (Airbnb specific: 3:00 PM -> 15:00)
+    // 2. Helper: Format Time
     function formatTime(timeString) {
         if (!timeString) return "";
         const [time, modifier] = timeString.split(' ');
@@ -23,7 +23,59 @@
         return `${hours}:${minutes}`;
     }
 
-    // 3. Helper: Robust Copy to Clipboard with Fallback
+    // 3. Helper: Map Tour Name
+    function mapTourName(rawName) {
+        const nameLower = rawName.toLowerCase();
+        if (nameLower.includes("communism & croatian homeland war")) return "war";
+        if (nameLower.includes("zagreb food tour")) return "food";
+        if (nameLower.includes("best zagreb") || nameLower.includes("zagreb must-sees with the ww2 tunnels")) return "best";
+        return rawName; 
+    }
+
+    // 4. Helper: Auto-Guess City from Tour Name
+    function guessCity(rawTourName) {
+        const nameLower = rawTourName.toLowerCase();
+        if (nameLower.includes("dubrovnik")) return "du";
+        if (nameLower.includes("rovinj")) return "rv";
+        if (nameLower.includes("pula")) return "pu";
+        if (nameLower.includes("split")) return "st";
+        if (nameLower.includes("zadar")) return "zd";
+        if (nameLower.includes("zagreb") || nameLower.includes("communism & croatian homeland war")) return "zg";
+        return ""; 
+    }
+
+    // 5. Helper: Extract Guide Name from Review Text
+    function extractGuideName(reviewText) {
+        if (!reviewText) return "N/A";
+        
+        // We use \b to ensure we only match whole words. 
+        // The 'i' flag at the end makes it case-insensitive.
+        const guideMap = [
+            { fullName: "Darko Crnolatac", regex: /\b(darko)\b/i },
+            { fullName: "Diana Bolić", regex: /\b(diana|diane)\b/i },
+            { fullName: "Ivana Čakarić", regex: /\b(ivana)\b/i },
+            { fullName: "Iva Pavlović", regex: /\b(iva)\b/i },
+            { fullName: "Katarina Novoselac", regex: /\b(katarina)\b/i },
+            { fullName: "Katija Crnčević", regex: /\b(katija)\b/i },
+            { fullName: "Luka Pelicarić", regex: /\b(luka|luca)\b/i },
+            { fullName: "Nikolina Folnović", regex: /\b(nikolina(\s?f)?)\b/i },
+            { fullName: "Vid Dorić", regex: /\b(vid|veed)\b/i },
+            // Keeping the ones without full names in your list as just their first names
+            { fullName: "Kristina", regex: /\b(kristina)\b/i },
+            { fullName: "Ena", regex: /\b(ena)\b/i },
+            { fullName: "Doris", regex: /\b(doris)\b/i }
+        ];
+
+        for (const guide of guideMap) {
+            if (guide.regex.test(reviewText)) {
+                return guide.fullName;
+            }
+        }
+
+        return "N/A"; // Fallback if no specific name is found
+    }
+
+    // 6. Helper: Copy to Clipboard
     function copyToClipboard(text) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(text).then(() => {
@@ -56,9 +108,8 @@
         document.body.removeChild(textArea);
     }
 
-    // 4. Main Scraping Function
+    // 7. Main Scraping Function
     function scrapeData() {
-        // Find review containers
         const reviewNodes = document.querySelectorAll('button[aria-label="Opens detailed review"]');
         
         if (reviewNodes.length === 0) {
@@ -67,21 +118,26 @@
             return;
         }
 
-        // --- Get the Tour Name from header ---
-        let tourName = "";
+        // --- Get Tour Name ---
+        let rawTourName = "";
         try {
             const titleEl = document.querySelector('h1');
             if(titleEl) {
-                // Split by the middle dot to remove rating score if present
-                tourName = titleEl.innerText.split('·')[0].trim();
+                rawTourName = titleEl.innerText.split('·')[0].trim();
             }
         } catch (e) {
-            tourName = "Tour Name Not Found";
+            rawTourName = "Tour Name Not Found";
         }
+        
+        const finalTourName = mapTourName(rawTourName);
 
-        // --- NEW LOGIC: Override specific tour name ---
-        if (tourName === "Zagreb must-sees with the ww2 Tunnels") {
-            tourName = "Best Zagreb";
+        // --- Get City Name (Prompt User with Auto-Guess) ---
+        const suggestedCity = guessCity(rawTourName);
+        const finalCityName = prompt("Please confirm the city abbreviation for this tour (du, rv, pu, st, zd, zg):", suggestedCity);
+        
+        if (finalCityName === null) {
+            console.log("Scraping cancelled by user.");
+            return; 
         }
 
         let output = ""; 
@@ -107,22 +163,25 @@
                 const textDiv = node.querySelector('.cwk6og9');
                 const reviewText = textDiv ? textDiv.innerText.replace(/(\r\n|\n|\r)/gm, " ") : "";
 
+                // --- Extract Guide Name ---
+                const guide = extractGuideName(reviewText);
+
                 // --- Constants ---
-                const guide = ""; 
                 const language = ""; 
                 const platform = "Airbnb";
 
                 // --- Build Row ---
-                output += `${dateVal}\t${timeVal}\t${guide}\t${rating}\t${tourName}\t${language}\t${platform}\t${reviewText}\n`;
+                output += `${dateVal}\t${timeVal}\t${guide}\t${rating}\t${finalTourName}\t${finalCityName.trim().toLowerCase()}\t${language}\t${platform}\t${reviewText}\n`;
 
             } catch (err) {
                 console.error("Error parsing a row", err);
             }
         });
 
-        // 5. Execute Copy
+        // Execute Copy
         copyToClipboard(output);
         console.log(`Successfully extracted ${reviewNodes.length} reviews.`);
+        alert(`Successfully copied ${reviewNodes.length} reviews for city: ${finalCityName.toUpperCase()}`);
     }
 
     // Run the scraper

@@ -2,16 +2,14 @@
     console.log("--> Starting Freetour Scraper...");
 
     // --- AUTO-DETECT CONTAINER ---
-    // Replaces $0. Finds the element with the most children containing yellow stars.
     function findBestContainer() {
         const allDivs = document.querySelectorAll('div, ul, section');
         let bestContainer = null;
         let maxScore = 0;
 
         allDivs.forEach(div => {
-            // Count direct children that look like reviews (contain the star color)
             let score = 0;
-            if (div.children.length > 1) { // Optimization: Must have children
+            if (div.children.length > 1) { 
                 Array.from(div.children).forEach(child => {
                     if (child.querySelector('[style*="fba749"]')) {
                         score++;
@@ -31,8 +29,8 @@
     let container = findBestContainer();
     console.log("Selected Container:", container);
 
-    // 2. Prepare Headers
-    const headers = ['Date', 'Time', 'Guide', 'Rating', 'Tour', 'Language', 'Platform', 'Review', 'Review title', 'Full'];
+    // 2. Prepare Headers (Reordered)
+    const headers = ['Date', 'Time', 'Guide', 'Rating', 'Tour', 'City', 'Language', 'Platform', 'Review'];
     const rows = [];
 
     // Helper: Format Cell
@@ -46,12 +44,64 @@
         return cleanText;
     };
 
-    // Helper: Format Date
+    // Helper: Format Date to DD/MMM/YYYY
     const formatDate = (dateStr) => {
         if (!dateStr) return '';
-        const parts = dateStr.split('-');
-        if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        const parts = dateStr.split('-'); 
+        if (parts.length === 3) {
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const monthIndex = parseInt(parts[1], 10) - 1;
+            return `${parts[2]}/${months[monthIndex]}/${parts[0]}`;
+        }
         return dateStr;
+    };
+
+    // Helper: Extract City code from Tour name
+    const getCityCode = (tourName) => {
+        const t = tourName.toLowerCase();
+        if (t.includes('dubrovnik')) return 'du';
+        if (t.includes('rovinj')) return 'rv';
+        if (t.includes('pula')) return 'pu';
+        if (t.includes('split')) return 'st';
+        if (t.includes('zadar')) return 'zd';
+        if (t.includes('zagreb')) return 'zg';
+        return '';
+    };
+
+    // Helper: Format Tour name
+    const formatTour = (tourName) => {
+        if (tourName.includes('Free Spirit Walking Tour')) {
+            return 'free';
+        }
+        return tourName;
+    };
+
+    // Helper: Extract and Normalize Guide Name
+    const extractGuide = (text) => {
+        if (!text) return 'N/A';
+        
+        const guideMap = [
+            { regex: /\b(darko)\b/i, full: 'Darko Crnolatac' },
+            { regex: /\b(diana|diane)\b/i, full: 'Diana Bolić' },
+            { regex: /\b(ivana)\b/i, full: 'Ivana Čakarić' }, 
+            { regex: /\b(iva)\b/i, full: 'Iva Pavlović' },
+            { regex: /\b(katarina)\b/i, full: 'Katarina Novoselac' },
+            { regex: /\b(katija)\b/i, full: 'Katija Crnčević' },
+            { regex: /\b(luka|luca)\b/i, full: 'Luka Pelicarić' },
+            { regex: /\b(nikolina(\s+f)?)\b/i, full: 'Nikolina Folnović' },
+            { regex: /\b(vid|veed)\b/i, full: 'Vid Dorić' },
+            { regex: /\b(ena)\b/i, full: 'Ena' },
+            { regex: /\b(doris)\b/i, full: 'Doris' },
+            { regex: /\b(kristina)\b/i, full: 'Kristina' }
+        ];
+
+        for (let guide of guideMap) {
+            if (guide.regex.test(text)) {
+                return guide.full;
+            }
+        }
+        
+        return 'N/A';
     };
 
     // 3. Iterate through review cards
@@ -68,9 +118,9 @@
         let rating = '';
         const starSpan = card.querySelector('[style*="fba749"]'); 
         if (starSpan) {
-            rating = starSpan.innerText.length; // Count squares
+            rating = starSpan.innerText.length; 
             if (rating === 0 && starSpan.children.length > 0) {
-                rating = starSpan.children.length; // Fallback for icons
+                rating = starSpan.children.length; 
             }
         }
 
@@ -80,15 +130,18 @@
         let title = '';
         if (lines.length > 0) title = lines[0].replace(/^"|"$/g, '');
 
-        // Find metadata line (Tour / Date / Time)
-        let date = '', time = '', tour = '', full = '';
+        let date = '', time = '', tour = '', city = '';
         const infoLineIndex = lines.findIndex(l => l.match(/\d{4}-\d{2}-\d{2}/) && l.includes('/'));
 
         if (infoLineIndex > -1) {
-            full = lines[infoLineIndex];
+            const full = lines[infoLineIndex];
             const parts = full.split(' / ');
             if (parts.length >= 3) {
-                tour = parts[0].trim();
+                const rawTourName = parts[0].trim();
+                
+                city = getCityCode(rawTourName); 
+                tour = formatTour(rawTourName);
+                
                 date = formatDate(parts[1].trim());
                 time = parts[2].replace(/(AM|PM)/i, '').trim();
             }
@@ -104,11 +157,15 @@
             review = lines.slice(replyIndex + 1).join('\n').replace(/Report$/, '').trim();
         }
 
-        const guide = ''; 
+        // --- GUIDE EXTRACTION ---
+        const combinedText = `${title} ${review}`;
+        const guide = extractGuide(combinedText); 
+
         const platform = 'freetour com';
         const language = ''; 
 
-        rows.push([date, time, guide, rating, tour, language, platform, review, title, full].map(formatCell).join('\t'));
+        // Build Row (Reordered)
+        rows.push([date, time, guide, rating, tour, city, language, platform, review].map(formatCell).join('\t'));
     });
 
     // 4. Copy to Clipboard
@@ -119,7 +176,6 @@
 
     const tsvContent = headers.join('\t') + '\n' + rows.join('\n');
     
-    // Copy logic adapted for Extension (Background copy usually requires focus, but this runs in tab so it's fine)
     const el = document.createElement('textarea');
     el.value = tsvContent;
     document.body.appendChild(el);

@@ -1,7 +1,7 @@
 (function() {
     console.log("GetYourGuide Review Scraper Started...");
 
-    // 1. Helper: Format Date
+    // 1. Helper: Format Date (DD/Mon/YYYY)
     function formatDate(dateStr) {
         if (!dateStr) return "";
         const parts = dateStr.replace(/,/g, '').split(' ');
@@ -9,6 +9,7 @@
         
         let [month, day, year] = parts;
         day = day.length < 2 ? '0' + day : day;
+        month = month.substring(0, 3); // e.g., "January" -> "Jan"
         return `${day}/${month}/${year}`;
     }
 
@@ -16,7 +17,7 @@
     function copyToClipboard(text) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(text).catch(err => {
-                console.warn("Async clipboard failed, trying fallback...", err);
+                // Silently fall back without logging a warning
                 fallbackCopy(text);
             });
         } else {
@@ -36,18 +37,57 @@
         try {
             document.execCommand('copy');
         } catch (err) {
-            console.error('Fallback copy failed', err);
+            // Silently ignore if fallback fails
         }
         document.body.removeChild(textArea);
     }
 
-    // 3. Main Logic: Expand cards -> Wait -> Scrape
+    // 3. Helper: Extract City from Tour Name
+    function extractCity(tourName) {
+        const t = tourName.toLowerCase();
+        if (t.includes("dubrovnik")) return "du";
+        if (t.includes("rovinj")) return "rv";
+        if (t.includes("pula")) return "pu";
+        if (t.includes("split")) return "st";
+        if (t.includes("zadar")) return "zd";
+        if (t.includes("zagreb")) return "zg";
+        return ""; 
+    }
+
+    // 4. Helper: Extract Guide Name using Regex Rules
+    function extractGuide(reviewText) {
+        const text = reviewText.toLowerCase();
+        
+        // Define regex patterns (with word boundaries \b to prevent partial matches)
+        const guideRegexes = [
+            { regex: /\b(luka|luca)\b/g, name: "Luka Pelicarić" },
+            { regex: /\b(vid|veed)\b/g, name: "Vid Dorić" },
+            { regex: /\b(kristina|christina)\b/g, name: "Kristina Božić" },
+            { regex: /\b(nikolina|nicolina)\b/g, name: "Nikolina Folnović" },
+            { regex: /\b(katarina|catarina)\b/g, name: "Katarina Novoselac" },
+            { regex: /\b(ivana)\b/g, name: "Ivana Čakarić" },
+            { regex: /\b(diana|diane)\b/g, name: "Diana Bolić" },
+            { regex: /\b(darko)\b/g, name: "Darko Crnolatac" },
+            { regex: /\b(iva)\b/g, name: "Iva Pavlović" },
+            { regex: /\b(ena)\b/g, name: "Ena" }, 
+            { regex: /\b(doris)\b/g, name: "Doris" }, 
+            { regex: /\b(katija|katia)\b/g, name: "Katija Crnčević" }
+        ];
+
+        for (let g of guideRegexes) {
+            if (g.regex.test(text)) {
+                return g.name;
+            }
+        }
+
+        return "N/A";
+    }
+
+    // 5. Main Logic: Expand cards -> Wait -> Scrape
     function expandAndScrape() {
-        // A. Find all expand buttons
         const expandButtons = document.querySelectorAll('button[data-testid="review-card-expand"]');
         let clickedCount = 0;
 
-        // B. Click them only if they currently say "Show details"
         expandButtons.forEach(btn => {
             if (btn.innerText.includes("Show details")) {
                 btn.click();
@@ -57,13 +97,12 @@
 
         console.log(`Expanded ${clickedCount} reviews. Waiting for content to load...`);
 
-        // C. Wait for the UI to update (500ms), then scrape
         setTimeout(() => {
             scrapeData();
         }, 500); 
     }
 
-    // 4. The actual Scraping Function (Runs after expansion)
+    // 6. The actual Scraping Function
     function scrapeData() {
         const cards = document.querySelectorAll('[data-testid="review-card"]');
         
@@ -72,28 +111,36 @@
             return;
         }
 
-        let output = "Date\tTime\tGuide\tRating\tTour\tLanguage\tPlatform\tReview\n";
+        let output = "Date\tTime\tGuide\tRating\tTour\tCity\tLanguage\tPlatform\tReview\n";
 
         cards.forEach(card => {
             try {
-                // --- 1. Extract Travel Date (From the expanded details) ---
-                // We look for the row identifying as 'Travel date', then get the text body inside it
+                // --- 1. Extract Travel Date ---
                 const dateRow = card.querySelector('[data-testid="Travel date"] .text-body');
-                
-                // Fallback: If travel date is missing (sometimes happens), grab the top-right Review Date
                 const dateRaw = dateRow ? dateRow.innerText.trim() : card.querySelector('.absolute.top-4.right-4')?.innerText.trim();
-                
                 const date = formatDate(dateRaw || "");
 
                 // --- 2. Extract Rating ---
                 const rating = card.querySelector('.c-user-rating__rating')?.innerText.trim() || "";
 
-                // --- 3. Extract Review ---
+                // --- 3. Extract Review & Guide Name ---
                 const reviewRaw = card.querySelector('[data-testid="review-card-comment"]')?.innerText || "";
                 const review = reviewRaw.replace(/(\r\n|\n|\r)/gm, " "); 
+                const guide = extractGuide(reviewRaw);
 
-                // --- 4. Extract Tour Name ---
-                const tour = card.querySelector('.text-ellipsis')?.innerText.trim() || "";
+                // --- 4. Extract Tour Name & City ---
+                let tourRaw = card.querySelector('.text-ellipsis')?.innerText.trim() || "";
+                let city = extractCity(tourRaw);
+                let tour = tourRaw;
+                
+                // Rename specific tours
+                if (tourRaw.includes("Free Spirit Walking Tour Zagreb")) {
+                    tour = "free";
+                } else if (tourRaw.includes("Zagreb: Communism and Croatian Homeland War Tour")) {
+                    tour = "war";
+                } else if (tourRaw.includes("Zagreb: Guided City Tour with WWII Tunnels")) {
+                    tour = "best";
+                }
 
                 // --- 5. Extract Language ---
                 const optionText = card.querySelector('[data-testid="Option"] .text-body span')?.innerText || "";
@@ -106,9 +153,8 @@
                 // --- 6. Constants ---
                 const platform = "GYG"; 
                 const time = ""; 
-                const guide = ""; 
 
-                output += `${date}\t${time}\t${guide}\t${rating}\t${tour}\t${language}\t${platform}\t${review}\n`;
+                output += `${date}\t${time}\t${guide}\t${rating}\t${tour}\t${city}\t${language}\t${platform}\t${review}\n`;
 
             } catch (e) {
                 console.error("Error parsing a card:", e);
@@ -117,8 +163,6 @@
 
         copyToClipboard(output);
         console.log(`Scraped ${cards.length} reviews successfully.`);
-        // Optional: Alert the user in the browser window so they know it finished
-        // alert(`Done! Scraped ${cards.length} reviews.`); 
     }
 
     // Start the process

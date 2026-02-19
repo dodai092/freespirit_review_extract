@@ -4,8 +4,8 @@
     // --- 1. Helper: Copy to Clipboard ---
     function copyToClipboard(text) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(text).catch(err => {
-                console.warn("Async clipboard failed, trying fallback...", err);
+            navigator.clipboard.writeText(text).catch(() => {
+                // Silently catch the permission error and run the fallback
                 fallbackCopy(text);
             });
         } else {
@@ -41,15 +41,11 @@
         return cleanText;
     };
 
-    // Updated Date Formatter: DD/Mmm/YYYY
     const formatDateObj = (dateObj) => {
         if (isNaN(dateObj.getTime())) return '';
-        
         const day = String(dateObj.getDate()).padStart(2, '0');
-        // Array of short month names
         const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        const month = monthNames[dateObj.getMonth()]; // getMonth() is 0-indexed
-        
+        const month = monthNames[dateObj.getMonth()];
         return `${day}/${month}/${dateObj.getFullYear()}`;
     };
 
@@ -65,9 +61,48 @@
         return map[code] || code.toLowerCase();
     };
 
+    // --- MAPPING FUNCTIONS ---
+    const mapGuideName = (name) => {
+        if (!name) return '';
+        const lowerName = name.toLowerCase().trim();
+        const guideMap = {
+            'andrija': 'Andrija Grubić',
+            'darko': 'Darko Crnolatac',
+            'diana': 'Diana Bolić',
+            'iva': 'Iva Pavlović',
+            'iva p': 'Iva Pavlović',
+            'ivana': 'Ivana Čakarić',
+            'katarina': 'Katarina Novoselac',
+            'katija': 'Katija Crnčević',
+            'kristina': 'Kristina Božić',
+            'luka': 'Luka Pelicarić',
+            'nikolina': 'Nikolina Folnović',
+            'nikolina f': 'Nikolina Folnović',
+            'vid': 'Vid Dorić'
+        };
+        return guideMap[lowerName] || name; // Return mapped name or original if not found
+    };
+
+    const mapCity = (text) => {
+        if (!text) return '';
+        const lowerText = text.toLowerCase();
+        if (lowerText.includes('dubrovnik')) return 'du';
+        if (lowerText.includes('rovinj')) return 'rv';
+        if (lowerText.includes('pula')) return 'pu';
+        if (lowerText.includes('split')) return 'st';
+        if (lowerText.includes('zadar')) return 'zd';
+        if (lowerText.includes('zagreb')) return 'zg';
+        return '';
+    };
+
+    const mapTour = (tourName) => {
+        if (!tourName) return '';
+        if (tourName.toLowerCase().includes('free spirit walking tour')) return 'free';
+        return tourName; // Return original if not matched
+    };
+
+
     // --- 3. Main Scraping Logic ---
-    
-    // Automatic Card Selection
     const allDivs = document.querySelectorAll('div');
     let cards = Array.from(allDivs).filter(div => {
         const hasText = div.innerText.includes("Content visible only for gurus");
@@ -76,12 +111,10 @@
         return hasText && hasGuide && isNotTooBig;
     });
 
-    // Filter duplicates
     cards = cards.filter(card => !cards.some(other => other !== card && card.contains(other)));
 
     if (cards.length === 0) {
         console.warn("No review cards found. Make sure you are on a Guruwalk bookings/reviews page.");
-        // Fallback selector
         const gridContainers = document.querySelectorAll('.grid.gap-y-4');
         if(gridContainers.length > 0) {
              cards = Array.from(gridContainers[0].children);
@@ -90,7 +123,7 @@
         }
     }
 
-    const headers = ['Date', 'Time', 'Guide', 'Rating', 'Tour', 'Language', 'Platform', 'Review'];
+    const headers = ['Date', 'Time', 'Guide', 'Rating', 'Tour', 'City', 'Language', 'Platform', 'Review'];
     const rows = [];
 
     cards.forEach(card => {
@@ -125,6 +158,7 @@
             let timeVal = '';
             let tourVal = '';
             let langVal = '';
+            let cityVal = '';
 
             const fullMatch = fullLine.match(fullInfoRegex);
             if (fullMatch) {
@@ -137,10 +171,16 @@
                 timeVal = formatTimeObj(d);
             }
 
+            // Extract city before modifying the tour name
+            cityVal = mapCity(tourVal) || mapCity(text); 
+            tourVal = mapTour(tourVal);
+
             // --- D. Guide ---
             let guideVal = '';
             const guideMatch = text.match(/Guided by (.*?)(?:\n|\|)/);
-            if (guideMatch) guideVal = guideMatch[1].trim();
+            if (guideMatch) {
+                guideVal = mapGuideName(guideMatch[1].trim());
+            }
 
             // --- E. Review ---
             let reviewVal = '';
@@ -155,7 +195,8 @@
                 timeVal, 
                 guideVal, 
                 ratingVal, 
-                tourVal, 
+                tourVal,
+                cityVal, 
                 langVal, 
                 platformVal, 
                 reviewVal

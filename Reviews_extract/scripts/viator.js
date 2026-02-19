@@ -32,6 +32,47 @@
         document.body.removeChild(el);
     }
 
+    // --- 4. UTILITY: GUIDE NAME EXTRACTOR ---
+    function extractGuideName(text) {
+        // Regex \b looks for exact word matches (case-insensitive)
+        // Grouped variations using (Name1|Name2) syntax
+        const guideMappings = [
+            { regex: /\bDarko\b/i, full: "Darko Crnolatac" },
+            { regex: /\b(Diana|Diane)\b/i, full: "Diana Bolić" },
+            { regex: /\b(Ivana|Ivanna)\b/i, full: "Ivana Čakarić" }, 
+            { regex: /\b(Iva|Eva)\b/i, full: "Iva Pavlović" },
+            { regex: /\b(Katarina|Catarina)\b/i, full: "Katarina Novoselac" },
+            { regex: /\b(Katija|Katia)\b/i, full: "Katija Crnčević" },
+            { regex: /\b(Kristina|Christina)\b/i, full: "Kristina Božić" },
+            { regex: /\b(Luka|Luca|Looka)\b/i, full: "Luka Pelicarić" },
+            { regex: /\b(Nikolina|Nicolina)(\s*F)?\b/i, full: "Nikolina Folnović" }, 
+            { regex: /\b(Vid|Veed)\b/i, full: "Vid Dorić" }
+        ];
+
+        let foundGuides = new Set();
+        for (let g of guideMappings) {
+            if (g.regex.test(text)) {
+                foundGuides.add(g.full);
+            }
+        }
+        // Returns the found names comma-separated, or an empty string if none found
+        return Array.from(foundGuides).join(", ");
+    }
+
+    // --- 5. UTILITY: TOUR NAME MAPPER ---
+    function mapTourName(rawTourName) {
+        if (!rawTourName) return "";
+        const lowerName = rawTourName.toLowerCase();
+        
+        if (lowerName.includes("big zagreb private")) return "big";
+        if (lowerName.includes("old zagreb private")) return "old";
+        if (lowerName.includes("free spirit")) return "free";
+        if (lowerName.includes("communism") || lowerName.includes("homeland war")) return "war";
+        
+        // Fallback: clean up Tripadvisor prefix if it's an unmapped tour
+        return rawTourName.replace("Tripadvisor review: ", "").trim();
+    }
+
     // --- MAIN LOGIC ---
     try {
         
@@ -69,8 +110,8 @@
                 const rating = card.querySelectorAll('svg.jumpstart_ui__Rating__rating').length || 5;
 
                 // TOUR
-                let tour = card.querySelector('[class*="ReviewHeader__reviewEntity"]')?.innerText || "";
-                tour = tour.replace("Tripadvisor review: ", "").trim();
+                const rawTourText = card.querySelector('[class*="ReviewHeader__reviewEntity"]')?.innerText || "";
+                const tour = mapTourName(rawTourText);
 
                 // REVIEW CONTENT (With Cleanup)
                 const contentDiv = card.querySelector('[class*="ReviewView__reviewContent___"]');
@@ -92,9 +133,9 @@
                     .replace(/\s+/g, " ")
                     .trim();
 
-                // CONSTANTS
+                // CONSTANTS & DYNAMIC EXTRACTIONS
                 const time = "";
-                const guide = "";
+                const guide = extractGuideName(reviewText);
                 const city = "zg";
                 const language = "";
                 const platform = "Viator";
@@ -110,6 +151,7 @@
 
         // C. OUTPUT
         copyToClipboard(tsvOutput);
+        console.log("Viator Scraper: Done! TSV data copied to clipboard.");
 
     } catch (e) {
         console.error("Viator Scraper: General Error", e);
