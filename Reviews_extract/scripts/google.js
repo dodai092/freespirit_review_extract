@@ -1,5 +1,5 @@
 (function () {
-  console.log('🚀 Google Script Injected');
+  console.log('🚀 Google Script Injected (Full Name Edition)');
 
   function parseRelativeDate(relativeText) {
     if (!relativeText) return null;
@@ -46,34 +46,60 @@
   function extractGuide(text) {
     if (!text) return 'N/A';
 
-    const guideNames = [
-      'Kristina','Nikolina','Katarina',
-      'Ivana','Diana','Darko','Doris',
-      'Luka','Vid','Iva','Ena'
-    ];
-
-    const aliases = {
-      'luca':'Luka','looka':'Luka','lucca':'Luka','lukka':'Luka',
-      'veed':'Vid','vidd':'Vid',
-      'cristina':'Kristina','christina':'Kristina',
-      'nickolina':'Nikolina','nicolina':'Nikolina','nikolena':'Nikolina',
-      'catherina':'Katarina','katharina':'Katarina','catarina':'Katarina','katerina':'Katarina','katrina':'Katarina',
-      'ivanna':'Ivana',
-      'diane':'Diana','dianna':'Diana','dyana':'Diana',
-      'darco':'Darko','darkko':'Darko',
-      'doriz':'Doris','dorris':'Doris',
-      'enna':'Ena'
+    // MAPPING: First Name -> Full Name
+    const guideMap = {
+      'Darko':    'Darko Crnolatac',
+      'Diana':    'Diana Bolić',
+      'Iva':      'Iva Pavlović',
+      'Ivana':    'Ivana Čakarić',
+      'Katarina': 'Katarina Novoselac',
+      'Katija':   'Katija Crnčević',
+      'Luka':     'Luka Pelicarić',
+      'Nikolina': 'Nikolina Folnović',
+      'Vid':      'Vid Dorić',
+      // Legacy names (kept just in case, output First Name only)
+      'Kristina': 'Kristina Božić',
+      'Doris':    'Doris Cvetko Pavišić',
+      'Ena':      'Ena Matacun'
     };
 
-    for (const name of guideNames) {
-      const regex = new RegExp(`\\b${name}\\b`, 'i');
-      if (regex.test(text)) return name;
+    // ALIASES: Misspelling -> Key in guideMap
+    const aliases = {
+      // Luka
+      'luca':'Luka','looka':'Luka','lucca':'Luka','lukka':'Luka',
+      // Vid
+      'veed':'Vid','vidd':'Vid',
+      // Kristina
+      'cristina':'Kristina','christina':'Kristina',
+      // Nikolina (Handles "Nikolina F" via regex or simple mapping)
+      'nickolina':'Nikolina','nicolina':'Nikolina','nikolena':'Nikolina','nikolina f':'Nikolina',
+      // Katarina
+      'catherina':'Katarina','katharina':'Katarina','catarina':'Katarina','katerina':'Katarina','katrina':'Katarina',
+      // Ivana
+      'ivanna':'Ivana',
+      // Diana
+      'diane':'Diana','dianna':'Diana','dyana':'Diana',
+      // Darko
+      'darco':'Darko','darkko':'Darko',
+      // Doris
+      'doriz':'Doris','dorris':'Doris',
+      // Ena
+      'enna':'Ena',
+      // Katija
+      'katia':'Katija','katiya':'Katija'
+    };
+
+    // 1. Check for exact First Names (returns Full Name)
+    for (const [firstName, fullName] of Object.entries(guideMap)) {
+      const regex = new RegExp(`\\b${firstName}\\b`, 'i');
+      if (regex.test(text)) return fullName;
     }
 
+    // 2. Check for Aliases (returns Full Name mapped from canonical)
     const lowerText = text.toLowerCase();
     for (const [alias, canonical] of Object.entries(aliases)) {
       const regex = new RegExp(`\\b${alias}\\b`, 'i');
-      if (regex.test(lowerText)) return canonical;
+      if (regex.test(lowerText)) return guideMap[canonical];
     }
 
     return 'N/A';

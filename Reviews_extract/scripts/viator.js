@@ -65,6 +65,7 @@
         const lowerName = rawTourName.toLowerCase();
         
         if (lowerName.includes("big zagreb private")) return "big";
+        if (lowerName.includes("food")) return "food";
         if (lowerName.includes("old zagreb private")) return "old";
         if (lowerName.includes("free spirit")) return "free";
         if (lowerName.includes("communism") || lowerName.includes("homeland war")) return "war";

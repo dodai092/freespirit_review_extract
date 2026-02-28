@@ -60,8 +60,8 @@
             { fullName: "Luka Pelicarić", regex: /\b(luka|luca)\b/i },
             { fullName: "Nikolina Folnović", regex: /\b(nikolina(\s?f)?)\b/i },
             { fullName: "Vid Dorić", regex: /\b(vid|veed)\b/i },
+            { fullName: "Kristina Božić", regex: /\b(kristina)\b/i },
             // Keeping the ones without full names in your list as just their first names
-            { fullName: "Kristina", regex: /\b(kristina)\b/i },
             { fullName: "Ena", regex: /\b(ena)\b/i },
             { fullName: "Doris", regex: /\b(doris)\b/i }
         ];
